@@ -1,6 +1,6 @@
 package com.koreait.exam.springbatch_app_10.app.base.initData;
 
-import com.koreait.exam.springbatch_app_10.app.member.MemberService;
+import com.koreait.exam.springbatch_app_10.app.member.service.MemberService;
 import com.koreait.exam.springbatch_app_10.app.member.entity.Member;
 
 public interface InitDataBefore {
