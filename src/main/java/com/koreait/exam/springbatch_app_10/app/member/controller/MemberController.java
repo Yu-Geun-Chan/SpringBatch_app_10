@@ -19,7 +19,7 @@ import javax.validation.Valid;
 public class MemberController {
     private final MemberService memberService;
 
-    @PreAuthorize("isAnonymous()")
+    @PreAuthorize("isAnonymous()") // 인증되지 않은사람만 실행 가능 // 로그인 x
     @GetMapping("/login")
     public String showLogin(HttpServletRequest request) {
         String uri = request.getHeader("Referer");
@@ -29,13 +29,13 @@ public class MemberController {
         return "member/login";
     }
 
-    @PreAuthorize("isAnonymous()")
+    @PreAuthorize("isAnonymous()") // 인증되지 않은사람만 실행 가능 // 로그인 x
     @GetMapping("/join")
     public String showJoin() {
         return "member/join";
     }
 
-    @PreAuthorize("isAnonymous()")
+    @PreAuthorize("isAnonymous()") // 인증되지 않은사람만 실행 가능 // 로그인 x
     @PostMapping("/join")
     public String join(@Valid JoinForm joinForm) {
         memberService.join(joinForm.getUsername(), joinForm.getPassword(), joinForm.getEmail());
