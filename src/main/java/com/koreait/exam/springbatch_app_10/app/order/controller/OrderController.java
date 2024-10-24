@@ -5,14 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.koreait.exam.springbatch_app_10.app.member.entity.Member;
 import com.koreait.exam.springbatch_app_10.app.order.entity.Order;
 import com.koreait.exam.springbatch_app_10.app.order.exception.ActorCanNotSeeOrderException;
+import com.koreait.exam.springbatch_app_10.app.order.exception.OrderIdNotMatchedException;
 import com.koreait.exam.springbatch_app_10.app.order.service.OrderService;
 import com.koreait.exam.springbatch_app_10.app.security.dto.MemberContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.*;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,7 +21,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.client.ResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
-
 
 import javax.annotation.PostConstruct;
 import java.util.Base64;
@@ -44,11 +40,15 @@ public class OrderController {
     @PreAuthorize("isAuthenticated()")
     public String showDetail(@AuthenticationPrincipal MemberContext memberContext, @PathVariable Long id, Model model) {
         Order order = orderService.findForPrintById(id).get();
+
         Member actor = memberContext.getMember();
+
         if (orderService.actorCanSee(actor, order) == false) {
             throw new ActorCanNotSeeOrderException();
         }
+
         model.addAttribute("order", order);
+
         return "order/detail";
     }
 
@@ -70,15 +70,27 @@ public class OrderController {
 
     @RequestMapping("/{id}/success")
     public String confirmPayment(
-            @RequestParam String paymentKey, @RequestParam String orderId, @RequestParam Long amount,
+            @PathVariable long id,
+            @RequestParam String paymentKey,
+            @RequestParam String orderId,
+            @RequestParam Long amount,
             Model model) throws Exception {
+
+        Order order = orderService.findForPrintById(id).get();
+
+        long orderIdInputed = Integer.parseInt(orderId.split("__")[1]);
+
+        if (id != orderIdInputed) {
+            throw new OrderIdNotMatchedException();
+        }
+
         HttpHeaders headers = new HttpHeaders();
         // headers.setBasicAuth(SECRET_KEY, ""); // spring framework 5.2 이상 버전에서 지원
         headers.set("Authorization", "Basic " + Base64.getEncoder().encodeToString((SECRET_KEY + ":").getBytes()));
         headers.setContentType(MediaType.APPLICATION_JSON);
         Map<String, String> payloadMap = new HashMap<>();
         payloadMap.put("orderId", orderId);
-        payloadMap.put("amount", String.valueOf(amount));
+        payloadMap.put("amount", String.valueOf(order.calculatePayPrice()));
         HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(payloadMap), headers);
         ResponseEntity<JsonNode> responseEntity = restTemplate.postForEntity(
                 "https://api.tosspayments.com/v1/payments/" + paymentKey, request, JsonNode.class);
