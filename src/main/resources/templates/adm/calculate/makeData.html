@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html layout:decorate="~{/adm/layout/layout}">
+<head>
+    <title>정산</title>
+</head>
+<main layout:fragment="main">
+    <div class="container mx-auto flex-grow flex items-center justify-center">
+        <div>
+            <h1>정산 데이터</h1>
+            <form method="post" th:action>
+                <select name="yearMonth" class="select select-bordered">
+                    <option value="2024-01">2024-01</option>
+                    <option value="2024-02">2024-02</option>
+                    <option value="2024-03">2024-03</option>
+                    <option value="2024-04">2024-04</option>
+                    <option value="2023-02">2023-02</option>
+                    <option value="2024-10">2024-10</option>
+                </select>
+                <input type="submit" class="btn btn-primary" value="생성">
+            </form>
+        </div>
+    </div>
+</main>
+</html>

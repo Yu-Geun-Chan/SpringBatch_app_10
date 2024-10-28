@@ -3,9 +3,12 @@ package com.koreait.exam.springbatch_app_10.app.order.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.koreait.exam.springbatch_app_10.app.member.entity.Member;
+import com.koreait.exam.springbatch_app_10.app.member.service.MemberService;
 import com.koreait.exam.springbatch_app_10.app.order.entity.Order;
+import com.koreait.exam.springbatch_app_10.app.order.exception.ActorCanNotPaymentOrderException;
 import com.koreait.exam.springbatch_app_10.app.order.exception.ActorCanNotSeeOrderException;
 import com.koreait.exam.springbatch_app_10.app.order.exception.OrderIdNotMatchedException;
+import com.koreait.exam.springbatch_app_10.app.order.exception.OrderNotEnoughRestCashException;
 import com.koreait.exam.springbatch_app_10.app.order.service.OrderService;
 import com.koreait.exam.springbatch_app_10.app.security.dto.MemberContext;
 import com.koreait.exam.springbatch_app_10.app.song.exception.ActorCanNotSeeException;
@@ -17,10 +20,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.ResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
 
@@ -34,9 +34,23 @@ import java.util.Map;
 @RequestMapping("order")
 public class OrderController {
     private final OrderService orderService;
+    private final MemberService memberService;
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper;
+
+    @PostMapping("/{id}/payByRestCashOnly")
+    @PreAuthorize("isAuthenticated()")
+    public String payByRestCashOnly(@AuthenticationPrincipal MemberContext memberContext, @PathVariable long id) {
+        Order order = orderService.findForPrintById(id).get();
+        Member actor = memberContext.getMember();
+        long restCash = memberService.getRestCash(actor);
+        if (orderService.actorCanPayment(actor, order) == false) {
+            throw new ActorCanNotPaymentOrderException();
+        }
+        orderService.payByRestCashOnly(order);
+        return "redirect:/order/%d?msg=%s".formatted(order.getId(), Ut.url.encode("충전금으로 결제가 완료되었습니다"));
+    }
 
     @GetMapping("/{id}")
     @PreAuthorize("isAuthenticated()")
@@ -45,11 +59,14 @@ public class OrderController {
 
         Member actor = memberContext.getMember();
 
+        long restCash = memberService.getRestCash(actor);
+
         if (orderService.actorCanSee(actor, order) == false) {
             throw new ActorCanNotSeeOrderException();
         }
 
         model.addAttribute("order", order);
+        model.addAttribute("actorRestCash", restCash);
 
         return "order/detail";
     }
@@ -76,7 +93,8 @@ public class OrderController {
             @RequestParam String paymentKey,
             @RequestParam String orderId,
             @RequestParam Long amount,
-            Model model) throws Exception {
+            Model model,
+            @AuthenticationPrincipal MemberContext memberContext) throws Exception {
 
         Order order = orderService.findForPrintById(id).get();
 
@@ -92,15 +110,22 @@ public class OrderController {
         headers.setContentType(MediaType.APPLICATION_JSON);
         Map<String, String> payloadMap = new HashMap<>();
         payloadMap.put("orderId", orderId);
-        payloadMap.put("amount", String.valueOf(order.calculatePayPrice()));
+        payloadMap.put("amount", String.valueOf(amount));
+        Member actor = memberContext.getMember();
+        long restCash = memberService.getRestCash(actor);
+        long payPriceRestCash = order.calculatePayPrice() - amount;
+        if (payPriceRestCash > restCash) {
+            throw new OrderNotEnoughRestCashException();
+        }
         HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(payloadMap), headers);
         ResponseEntity<JsonNode> responseEntity = restTemplate.postForEntity(
                 "https://api.tosspayments.com/v1/payments/" + paymentKey, request, JsonNode.class);
         if (responseEntity.getStatusCode() == HttpStatus.OK) {
+
 //            JsonNode successNode = responseEntity.getBody();
 //            model.addAttribute("orderId", successNode.get("orderId").asText());
 //            String secret = successNode.get("secret").asText(); // 가상계좌의 경우 입금 callback 검증을 위해서 secret을 저장하기를 권장함
-            orderService.payByTossPayments(order);
+            orderService.payByTossPayments(order, payPriceRestCash);
             return "redirect:/order/%d?msg=%s".formatted(order.getId(), Ut.url.encode("결제가 완료되었습니다"));
         } else {
             JsonNode failNode = responseEntity.getBody();
